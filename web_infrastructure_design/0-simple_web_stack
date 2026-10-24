@@ -1,0 +1,77 @@
+Diagram: ./0-simple_web_stack.png
+
+# 0. Simple web stack
+
+## The flow
+
+A user opens their browser and types www.foobar.com.
+
+1. The browser needs an IP address, not a name, so it asks DNS to resolve
+   www.foobar.com. The www record for foobar.com is an A record pointing to
+   8.8.8.8, so DNS answers 8.8.8.8.
+2. The browser opens a TCP connection to 8.8.8.8 on port 80 (HTTP) and sends
+   an HTTP GET request.
+3. Nginx, the web server listening on that port, receives the request. If the
+   request is for a static file (an image, a CSS file) it serves it directly.
+   If the request needs logic, it forwards the request to the application
+   server.
+4. The application server runs the application files (the code base), executes
+   the business logic, and asks the MySQL database for whatever data it needs.
+5. MySQL answers with the data, the application builds the HTML page, hands it
+   back to Nginx, and Nginx sends it to the browser as an HTTP response. The
+   browser renders the page.
+
+## Specifics
+
+**What is a server**
+A server is a machine - physical or virtual - that runs software which waits
+for requests from clients over a network and answers them. It is not the
+software itself; it is the machine hosting it.
+
+**What is the role of the domain name**
+A domain name is a human-readable label that maps to an IP address. People
+remember foobar.com; they do not remember 8.8.8.8. It also means the IP can
+change without anyone having to learn a new address.
+
+**What type of DNS record www is in www.foobar.com**
+It is an A record (an IPv4 address record) pointing to 8.8.8.8. It could also
+be a CNAME pointing to another name, but here the requirement is a record
+pointing to the server IP, so it is an A record.
+
+**What is the role of the web server**
+Nginx accepts incoming HTTP(S) connections, serves static content directly,
+handles concurrency and keep-alive connections, and reverse-proxies the
+dynamic requests to the application server.
+
+**What is the role of the application server**
+It runs the application code. It executes the business logic, talks to the
+database, renders the templates, and returns the generated page to the web
+server. The web server deals with the HTTP protocol; the application server
+deals with the program.
+
+**What is the role of the database**
+MySQL stores the application's data persistently - users, posts, orders - and
+answers the queries the application sends it.
+
+**What is the server using to communicate with the computer of the user**
+The TCP/IP protocol stack. IP routes the packets to 8.8.8.8, TCP provides a
+reliable ordered connection on port 80, and HTTP is the application protocol
+carried inside that TCP connection.
+
+## Issues with this infrastructure
+
+**SPOF (Single Point Of Failure)**
+Everything lives on one server. If that machine dies - hardware failure, a
+crashed Nginx, a full disk, a network outage - the entire website is down.
+There is no second anything.
+
+**Downtime when maintenance is needed**
+Deploying new code usually requires restarting the web server or the
+application server. During that restart the site is unreachable. The same is
+true for any OS upgrade or configuration change.
+
+**Cannot scale if there is too much incoming traffic**
+One machine has a fixed amount of CPU, RAM, and bandwidth. Past a certain
+number of concurrent users it saturates, requests queue up, and the site slows
+to a crawl or stops answering. The only option is a bigger machine (vertical
+scaling), which has a hard ceiling and still requires downtime.

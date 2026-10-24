@@ -1,0 +1,87 @@
+Diagram: ./2-secured_and_monitored_web_infrastructure.png
+
+# 2. Secured and monitored web infrastructure
+
+## What was added
+
+- 3 firewalls, one in front of each machine (load balancer, server 1, server 2)
+- 1 SSL certificate for www.foobar.com, so traffic is served over HTTPS
+- 3 monitoring clients, one on each machine, shipping metrics and logs to a
+  monitoring service (Sumologic, Datadog, Prometheus - the principle is the
+  same)
+
+## Why each element was added
+
+**The firewalls** restrict which ports are reachable from where. The load
+balancer should accept 80 and 443 from the whole internet; the web servers
+should accept traffic only from the load balancer; the database port should
+only be reachable from the application servers. Without them, every service on
+every machine is exposed to the internet.
+
+**The SSL certificate** lets the site be served over HTTPS so the traffic is
+encrypted and the server's identity is verified.
+
+**The monitoring clients** are agents that run on each host, collect metrics
+and logs locally, and push them to the monitoring service, which stores them,
+graphs them, and raises alerts.
+
+## Specifics
+
+**What are firewalls for**
+A firewall filters network traffic against a set of rules, allowing or
+blocking packets by source, destination, port, and protocol. It reduces the
+attack surface to only the ports that genuinely need to be public, and it
+contains the damage if one machine is compromised.
+
+**Why is the traffic served over HTTPS**
+HTTPS wraps HTTP in TLS. That gives three things: confidentiality (nobody on
+the path can read the traffic), integrity (nobody can modify it undetected),
+and authentication (the certificate proves the server really is
+www.foobar.com). Without it, passwords, session cookies, and personal data
+travel in clear text and anyone on the same network can capture them. Browsers
+also flag plain HTTP sites as "Not secure".
+
+**What monitoring is used for**
+To know what the system is doing - before, during, and after a problem. It
+tracks availability and performance, raises alerts when something crosses a
+threshold, gives the data needed to debug an incident, and shows trends so
+capacity can be planned ahead of saturation.
+
+**How the monitoring tool is collecting data**
+An agent installed on each server reads local sources - CPU, memory, disk and
+network counters from the OS, application and web server log files, service
+health checks - and pushes that data to the monitoring platform over the
+network at a regular interval. The platform aggregates, stores, and visualises
+it, and evaluates the alerting rules.
+
+**How to monitor web server QPS**
+QPS (queries per second) is derived from the web server's access log. Point
+the monitoring agent at Nginx's access log so every request becomes an event,
+then build a metric that counts those events per second (or count per minute
+divided by 60). Nginx's stub_status module, or an Nginx exporter, can also
+expose a request counter that the agent scrapes; the rate of that counter is
+the QPS. Then put a dashboard and an alert on it.
+
+## Issues with this infrastructure
+
+**Why terminating SSL at the load balancer level is an issue**
+If TLS is decrypted at the load balancer, everything behind it travels in
+clear text on the internal network. Anyone who gains a foothold inside the
+network - or any misconfigured switch - can read the traffic, so the system is
+not truly end-to-end encrypted. The fix is to re-encrypt between the load
+balancer and the backends, or to pass the TLS through to them.
+
+**Why having only one MySQL server capable of accepting writes is an issue**
+It is a single point of failure and a bottleneck for writes. If the Primary
+goes down the application cannot write anything until a replica is promoted,
+which usually requires manual intervention and risks losing the transactions
+that had not replicated yet. Write throughput also cannot be scaled by adding
+replicas.
+
+**Why having servers with all the same components is an issue**
+Each server runs the web server, the application server, and a database at the
+same time, so they compete for the same CPU, RAM, and disk. A heavy database
+query slows down request serving on the same box. It also means the components
+cannot be scaled independently - if only the application tier is saturated,
+you still have to add a whole stack - and a failure in one component can take
+the whole machine with it.

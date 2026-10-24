@@ -1,0 +1,57 @@
+Diagram: ./3-scale_up.png
+
+# 3. Scale up
+
+## What was added
+
+- 1 extra server, bringing the total to four machines plus the load-balancer
+  pair
+- 1 additional load balancer (HAproxy), configured as a cluster with the
+  existing one
+- The components are split: the web server, the application server, and the
+  database each get their own dedicated server
+
+## Why each element was added
+
+**The second load balancer, clustered with the first**
+The single HAproxy was the remaining front-door SPOF. Two HAproxy nodes
+sharing a virtual IP (with keepalived/VRRP) remove it: both are configured
+identically, and if the active one stops answering, the VIP moves to the other
+within seconds and traffic keeps flowing. The DNS record points at the virtual
+IP, so clients never notice the switch. Depending on the configuration the
+pair runs Active-Passive (one holds the VIP) or Active-Active (both hold
+traffic via DNS round-robin).
+
+**Splitting the web server onto its own server**
+The web server's job is handling many concurrent connections, TLS, and static
+files - it is network- and I/O-bound. On its own machine it stops competing
+for CPU with application code, and it can be scaled or tuned for exactly that
+workload.
+
+**Splitting the application server onto its own server**
+The application server runs the business logic and templating - it is
+CPU- and memory-bound. Giving it its own machine means a heavy request cannot
+starve the web server of resources, and the application tier can be scaled
+independently of the others, which is usually the tier that saturates first.
+
+**Splitting the database onto its own server**
+MySQL wants memory for its buffer pool and fast disk for its data files, and
+it behaves badly when it has to share them. A dedicated machine lets it be
+sized and tuned for storage, makes backups and replication cleaner, and means
+a long query no longer slows down request serving.
+
+## Why splitting matters in general
+
+Each component now has one job. That brings:
+
+- **Independent scaling** - add machines only to the tier that needs them
+  instead of duplicating the whole stack.
+- **Isolated failures** - a crashed application server does not take the web
+  server or the database down with it.
+- **Targeted tuning** - CPU for the application tier, RAM and disk for the
+  database, network for the web tier.
+- **Clearer monitoring and security** - metrics per tier are easy to reason
+  about, and firewall rules between tiers become simple and strict.
+
+The trade-off is more machines to manage and extra network hops between the
+tiers, which adds a small amount of latency and more moving parts to monitor.

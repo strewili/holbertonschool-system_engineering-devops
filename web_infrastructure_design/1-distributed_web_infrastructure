@@ -1,0 +1,83 @@
+Diagram: ./1-distributed_web_infrastructure.png
+
+# 1. Distributed web infrastructure
+
+## The flow
+
+The user resolves www.foobar.com through DNS, which now points to the load
+balancer's IP. The browser opens a TCP connection to the load balancer on port
+80. HAproxy picks one of the two servers and forwards the request. On that
+server, Nginx serves the static assets or hands the request to the application
+server, which runs the code base and queries MySQL. The response travels back
+through HAproxy to the browser.
+
+## Why each element was added
+
+**1 load balancer (HAproxy)**
+It gives the infrastructure a single entry point while spreading the traffic
+across several servers. It removes the web/application tier as a single point
+of failure and lets us add capacity by adding servers instead of buying a
+bigger one.
+
+**A second server**
+Two servers mean roughly twice the capacity, and the site survives the loss of
+one of them. It also makes rolling deployments possible: take one out of the
+pool, update it, put it back, then do the other - with no downtime.
+
+**MySQL Primary-Replica cluster**
+Instead of two unrelated databases, the two MySQL instances are set up as one
+cluster so both servers see the same data. The replica also gives us a warm
+copy for backups and read scaling.
+
+## Specifics
+
+**What distribution algorithm the load balancer is configured with**
+Round Robin. HAproxy keeps a list of the healthy backend servers and sends
+each new request to the next server in the list, cycling back to the start at
+the end. Request 1 goes to server 1, request 2 to server 2, request 3 to
+server 1 again, and so on. It is simple and spreads traffic evenly when the
+servers have similar capacity. HAproxy also health-checks the backends and
+stops sending traffic to one that stops answering.
+
+**Active-Active or Active-Passive**
+This setup is Active-Active: both servers are in the pool and both receive
+traffic at the same time.
+
+In an Active-Passive setup only one node serves traffic while the other sits
+idle as a standby, taking over only when the active node fails. Active-Passive
+is simpler and avoids data-consistency problems, but half the hardware does
+nothing most of the time. Active-Active uses all the capacity and degrades
+gracefully, but every node must be able to handle any request.
+
+**How a database Primary-Replica (Master-Slave) cluster works**
+The Primary is the only node that accepts writes. Every change it makes is
+written to a binary log. Each Replica connects to the Primary, reads that log,
+and replays the same changes on its own copy of the data. Replication is
+usually asynchronous, so a Replica can be a fraction of a second behind.
+
+**Difference between the Primary node and the Replica node regarding the
+application**
+The application sends all writes - INSERT, UPDATE, DELETE - to the Primary
+only. It can send reads - SELECT - to either, and sending them to the Replica
+takes load off the Primary. The application must tolerate the small
+replication lag: data just written to the Primary may not be readable from the
+Replica for a moment.
+
+## Issues with this infrastructure
+
+**Where are the SPOFs**
+- The load balancer. There is only one, so if HAproxy goes down nothing
+  reaches the servers at all.
+- The MySQL Primary. Only it accepts writes, so if it dies the site becomes
+  read-only until a replica is promoted.
+
+**Security issues**
+- No firewall, so every port on every machine is reachable from the internet.
+- No HTTPS, so traffic travels in clear text and can be read or modified in
+  transit. Passwords and session cookies are exposed.
+
+**No monitoring**
+Nothing is collecting metrics or logs. We only learn the site is down when a
+user complains, we cannot see a problem building up (disk filling, memory
+leaking, response time creeping), and we have no data to debug an incident
+after the fact.
