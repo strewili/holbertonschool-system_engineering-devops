@@ -1,5 +1,9 @@
 # Holberton School — System engineering & DevOps
 
-| Directory | Project |
+مشاريع هندسة الأنظمة و DevOps: تصميم البنى التحتية، الشبكات، والخوادم.
+
+| المجلد | المشروع |
 | --- | --- |
-| `web_infrastructure_design` | Web infrastructure design — whiteboard designs from a single server to a split, secured, monitored and clustered stack |
+| `web_infrastructure_design` | تصميم بنية ويب من سيرفر واحد إلى نظام موزّع مؤمَّن ومراقَب ومقسّم |
+
+كل مجلد فيه README خاص فيه يشرح المفاهيم والمهام.
